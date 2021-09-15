@@ -14,8 +14,6 @@ const col_name_n = 'notifications'
 let connection;
 let dbo;
 
-let adr;
-
 function compare(recieved,expected){
     expect(recieved.Id).toBe(expected.Id)
     expect(recieved.AcceptedAnswerId).toBe(expected.AcceptedAnswerId)
@@ -36,10 +34,8 @@ beforeAll(async ()=>{
   
     })
     dbo = await connection.db(db_name)
-
-    adr = await dbo.collection('globals').find({}).toArray()
-    adr = adr[0].adr
-
+    //console.log('db')
+    //console.log(dbo)
 })
 
 afterAll(async ()=>{
@@ -190,55 +186,6 @@ test('GET /questions/:question_id/:vote DOWNVOTE',async ()=>{
         })
 })
 
-test('GET /questions/:question_id/:vote/undo UPVOTE UNDO',async ()=>{
-
-    const question_id = 9999
-    const vote = 'upvote'
-
-    let query_res = await dbo.collection(col_name_q).find({'Id':question_id,'PostTypeId':1}).toArray()
-    const preAPI = query_res[0]
-
-    await supertest(app)
-        .get(`/questions/${question_id}/${vote}/undo`)
-        .set({'x-access-token':'t2'})
-        .expect(302)
-        .then(async (res)=>{
-            //console.log(res.text)
-            //console.log(res.body)
-            query_res = await dbo.collection(col_name_q).find({'Id':question_id,'PostTypeId':1}).toArray()
-            const postAPI = query_res[0]
-            //let preAPI = postAPI
-            //console.log(preAPI)
-            preAPI['Score']-=1
-            //console.log(postAPI)
-            compare(preAPI,postAPI)
-        })
-})
-
-test('GET /questions/:question_id/:vote/undo DOWNVOTE UNDO',async ()=>{
-
-    const question_id = 9999
-    const vote = 'downvote'
-
-    let query_res = await dbo.collection(col_name_q).find({'Id':question_id,'PostTypeId':1}).toArray()
-    const preAPI = query_res[0]
-
-    await supertest(app)
-        .get(`/questions/${question_id}/${vote}/undo`)
-        .set({'x-access-token':'t2'})
-        .expect(302)
-        .then(async (res)=>{
-            //console.log(res.text)
-            //console.log(res.body)
-            query_res = await dbo.collection(col_name_q).find({'Id':question_id,'PostTypeId':1}).toArray()
-            const postAPI = query_res[0]
-            //let preAPI = postAPI
-            //console.log(preAPI)
-            preAPI['Score']+=1
-            //console.log(postAPI)
-            compare(preAPI,postAPI)
-        })
-})
 
 test('POST /questions/add  NOT LOGGED IN', async () => {
     const question={
@@ -337,8 +284,56 @@ describe('Add Answer ',()=>{
             .then(async (res)=>{
                 let recieved = await dbo.collection(col_name_q).find({'PostTypeId':2,'ParentId':9999,'Body':answer.Body}).toArray()
                 recieved = recieved[0]
-                expect(res.headers.location).toBe(`http://${adr}:8088/answers/${recieved.Id}`)
+                expect(res.headers.location).toBe(`http://localhost:8088/answers/${recieved.Id}`)
                 expect(recieved.Body).toBe(answer.Body)
             }) 
     })
+})
+
+describe('Add Answer to Closed Question',()=>{
+    beforeEach(async ()=>{
+        await dbo.collection(col_name_q).updateOne({'PostTypeId':1,'Id':9999},{$set:{'ClosedDate':Date.now()}})
+    })
+    test('POST /questions/:question_id/answers/add CLOSED QUESTION', async () => {
+        const question_id = 9999
+        const answer = {
+            'Body':'Testing Add Answer v1.2 for JEST'
+        }
+        await supertest(app).post(`/questions/${question_id}/answers/add`)
+            .set({'content-type':'application/json'})
+            .set({'x-access-token':'t2'})
+            .send(answer)
+            .expect(200)
+            .then(async (res)=>{
+                expect(res.text).toBe('Already Closed Question')
+            }) 
+    })
+})
+test('POST /questions/:question_id/answers/add INVALID QUESTION', async () => {
+    const question_id = 9999000
+    const answer = {
+        'Body':'Testing Add Answer v1.2 for JEST'
+    }
+    await supertest(app).post(`/questions/${question_id}/answers/add`)
+        .set({'content-type':'application/json'})
+        .set({'x-access-token':'t2'})
+        .send(answer)
+        .expect(200)
+        .then(async (res)=>{
+            expect(res.text).toBe('Invalid Question ID')
+        }) 
+})
+test('POST /questions/:question_id/answers/add INVALID USER', async () => {
+    const question_id = 9999
+    const answer = {
+        'Body':'Testing Add Answer v1.2 for JEST'
+    }
+    await supertest(app).post(`/questions/${question_id}/answers/add`)
+        .set({'content-type':'application/json'})
+        .set({'x-access-token':'nottoken'})
+        .send(answer)
+        .expect(200)
+        .then(async (res)=>{
+            expect(res.text).toBe('Invalid User')
+        }) 
 })

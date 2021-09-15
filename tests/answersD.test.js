@@ -26,7 +26,6 @@ function compare(recieved,expected){
     expect(recieved.ClosedDate).toBe(expected.ClosedDate)
 }
 
-let adr;
 
 beforeAll(async ()=>{
     connection = await MongoClient.connect(url,{
@@ -35,10 +34,6 @@ beforeAll(async ()=>{
   
     })
     dbo = await connection.db(db_name)
-
-    adr = await dbo.collection('globals').find({}).toArray()
-    adr = adr[0].adr
-
     
 })
 
@@ -199,7 +194,7 @@ test('POST /answers/:answer_id/delete', async () => {
         .expect(302)
         .then(async (res)=>{
 
-            expect(res.headers.location).toBe(`http://${adr}:8089/questions/9999`)
+            expect(res.headers.location).toBe('http://localhost:8089/questions/9999')
         })
 
 })

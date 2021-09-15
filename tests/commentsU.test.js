@@ -131,76 +131,89 @@ test('PATCH /comments/:id/upvote UPVOTE',async ()=>{
 
     const id = 9997
 
+    // eslint-disable-next-line prefer-const
     let query_res = await dbo.collection(col_name_c).find({'Id':id}).toArray()
     const preAPI = query_res[0]
 
     await supertest(app)
         .patch(`/comments/${id}/upvote`)
         .set({'x-access-token':'t2'})
-        .expect(302)
+        .expect(200)
         .then(async (res)=>{
-            expect(res.headers.location).toBe(`/comments/${id}`)
-            query_res = await dbo.collection(col_name_c).find({'Id':id}).toArray()
-            const postAPI = query_res[0]
-            preAPI['Score']+=1
-            compare(preAPI,postAPI)
+            // expect(res.headers.location).toBe(`/comments/${id}`)
+            // query_res = await dbo.collection(col_name_c).find({'Id':id}).toArray()
+            // const postAPI = query_res[0]
+            // preAPI['Score']+=1
+            // compare(preAPI,postAPI)
+
+            expect(res.text).toBe('Reaction on Comment is captured')
         })
 })
 test('PATCH /comments/:id/downvote/undo DOWNVOTE UNDO',async ()=>{
 
     const id = 9997
 
+    // eslint-disable-next-line prefer-const
     let query_res = await dbo.collection(col_name_c).find({'Id':id}).toArray()
     const preAPI = query_res[0]
 
     await supertest(app)
         .patch(`/comments/${id}/downvote/undo`)
         .set({'x-access-token':'t2'})
-        .expect(302)
+        .expect(200)
         .then(async (res)=>{
-            expect(res.headers.location).toBe(`/comments/${id}`)
-            query_res = await dbo.collection(col_name_c).find({'Id':id}).toArray()
-            const postAPI = query_res[0]
-            preAPI['Score']+=1
-            compare(preAPI,postAPI)
+            // expect(res.headers.location).toBe(`/comments/${id}`)
+            // query_res = await dbo.collection(col_name_c).find({'Id':id}).toArray()
+            // const postAPI = query_res[0]
+            // preAPI['Score']+=1
+            // compare(preAPI,postAPI)
+
+            expect(res.text).toBe('Reaction on Comment is captured')
         })
 })
 test('PATCH /comments/:id/upvote DOWNVOTE',async ()=>{
 
     const id = 9997
 
+    // eslint-disable-next-line prefer-const
     let query_res = await dbo.collection(col_name_c).find({'Id':id}).toArray()
     const preAPI = query_res[0]
 
     await supertest(app)
         .patch(`/comments/${id}/downvote`)
         .set({'x-access-token':'t2'})
-        .expect(302)
+        .expect(200)
         .then(async (res)=>{
-            expect(res.headers.location).toBe(`/comments/${id}`)
-            query_res = await dbo.collection(col_name_c).find({'Id':id}).toArray()
-            const postAPI = query_res[0]
-            preAPI['Score']-=1
-            compare(preAPI,postAPI)
+            // expect(res.headers.location).toBe(`/comments/${id}`)
+            // query_res = await dbo.collection(col_name_c).find({'Id':id}).toArray()
+            // const postAPI = query_res[0]
+            // preAPI['Score']-=1
+            // compare(preAPI,postAPI)
+
+            expect(res.text).toBe('Reaction on Comment is captured')
+  
         })
 })
 test('PATCH /comments/:id/downvote/undo UPVOTE UNDO',async ()=>{
 
     const id = 9997
 
+    // eslint-disable-next-line prefer-const
     let query_res = await dbo.collection(col_name_c).find({'Id':id}).toArray()
     const preAPI = query_res[0]
 
     await supertest(app)
         .patch(`/comments/${id}/upvote/undo`)
         .set({'x-access-token':'t2'})
-        .expect(302)
+        .expect(200)
         .then(async (res)=>{
-            expect(res.headers.location).toBe(`/comments/${id}`)
-            query_res = await dbo.collection(col_name_c).find({'Id':id}).toArray()
-            const postAPI = query_res[0]
-            preAPI['Score']-=1
-            compare(preAPI,postAPI)
+            // expect(res.headers.location).toBe(`/comments/${id}`)
+            // query_res = await dbo.collection(col_name_c).find({'Id':id}).toArray()
+            // const postAPI = query_res[0]
+            // preAPI['Score']-=1
+            // compare(preAPI,postAPI)
+
+            expect(res.text).toBe('Reaction on Comment is captured')
         })
 })
 /**
@@ -302,16 +315,90 @@ test('POST /comments/:id/edit', async () => {
         .set({'content-type':'application/json'})
         .set({'x-access-token':'t1'})
         .send(comment)
-        .expect(302)
+        .expect(200)
         .then(async (res)=>{
 
-            expect(res.headers.location).toBe('/question/9999/comments')
+            // expect(res.headers.location).toBe('/questions/9999/comments')
             let recieved = await dbo.collection(col_name_c).find({'Id':9997}).toArray()
             recieved = recieved[0]
 
             expect(recieved.Text).toBe(comment.body)
-
+            expect(res.text).toBe('Comment Edited')
 
         })
 
+})
+
+describe('UpVote on a Upvoted Comment',()=>{
+    beforeEach(async ()=>{
+        await dbo.collection('votes').insertOne({'UserId':902,'PostId':9997,'PostTypeId':3,'Status':1})
+    })
+    test('PATCH /comments/:id/upvote', async () => {
+        const id = 9997
+        await supertest(app).patch(`/comments/${id}/upvote`)
+            .set({'x-access-token':'t2'})
+            .expect(200)
+            .then(async (res)=>{
+                expect(res.text).toBe('Reaction on Comment is captured')
+                const recieved = await dbo.collection('votes').find({'UserId':902,'PostId':9997,'PostTypeId':3}).toArray()
+                expect(recieved.length).toBe(0)
+            })
+    })
+    
+})
+
+describe('UpVote on a Downvoted Comment',()=>{
+    beforeEach(async ()=>{
+        await dbo.collection('votes').insertOne({'UserId':902,'PostId':9997,'PostTypeId':3,'Status':-1})
+    })
+    test('PATCH /comments/:id/upvote', async () => {
+        const id = 9997
+        await supertest(app).patch(`/comments/${id}/upvote`)
+            .set({'x-access-token':'t2'})
+            .expect(200)
+            .then(async (res)=>{
+                expect(res.text).toBe('Reaction on Comment is captured')
+                const recieved = await dbo.collection('votes').find({'UserId':902,'PostId':9997,'PostTypeId':3}).toArray()
+                expect(recieved.length).toBe(1)
+                expect(recieved[0].Status).toBe(1)
+            })
+    })
+    
+})
+
+describe('DownVote on a Downvoted Comment',()=>{
+    beforeEach(async ()=>{
+        await dbo.collection('votes').insertOne({'UserId':902,'PostId':9997,'PostTypeId':3,'Status':-1})
+    })
+    test('PATCH /comments/:id/upvote', async () => {
+        const id = 9997
+        await supertest(app).patch(`/comments/${id}/downvote`)
+            .set({'x-access-token':'t2'})
+            .expect(200)
+            .then(async (res)=>{
+                expect(res.text).toBe('Reaction on Comment is captured')
+                const recieved = await dbo.collection('votes').find({'UserId':902,'PostId':9997,'PostTypeId':3}).toArray()
+                expect(recieved.length).toBe(0)
+            })
+    })
+    
+})
+
+describe('DownVote on a Upvoted Comment',()=>{
+    beforeEach(async ()=>{
+        await dbo.collection('votes').insertOne({'UserId':902,'PostId':9997,'PostTypeId':3,'Status':1})
+    })
+    test('PATCH /comments/:id/upvote', async () => {
+        const id = 9997
+        await supertest(app).patch(`/comments/${id}/downvote`)
+            .set({'x-access-token':'t2'})
+            .expect(200)
+            .then(async (res)=>{
+                expect(res.text).toBe('Reaction on Comment is captured')
+                const recieved = await dbo.collection('votes').find({'UserId':902,'PostId':9997,'PostTypeId':3}).toArray()
+                expect(recieved.length).toBe(1)
+                expect(recieved[0].Status).toBe(-1)
+            })
+    })
+    
 })

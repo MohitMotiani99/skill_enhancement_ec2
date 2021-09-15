@@ -1,61 +1,50 @@
-/* eslint-disable no-var */
-var express = require('express')
-var bodyParser = require('body-parser')
-var express=require('express')
+/* eslint-disable consistent-return */
+/* eslint-disable no-console */
+const express = require('express')
+const bodyParser = require('body-parser')
+const {OAuth2Client} = require('google-auth-library')
+const client = new OAuth2Client("457453379813-1ei0s3u553o1elucdfbmhj6c8v6cknt7.apps.googleusercontent.com")
 const app = express()
-var bodyParser = require("body-parser")
 app.use(express.json())
 app.use(express.urlencoded({extended:true}))
 app.use(express.static("public"))
-//var cors = require('cors')
-//var app = express()
+const cors = require('cors')
+app.use(cors())
 const { verifyAuth } = require('./pauthorize')
-const { verifyToken } = require('./pauthorize')
 
 app.use(bodyParser.urlencoded({
     extended:true
 }));
-// var server = app.listen(5050,()=>{
-//     console.log(' Server Started')
-// })
 
 const MongoClient = require('mongodb').MongoClient
-//var url = 'mongodb://127.0.0.1:27017'
 const url = 'mongodb+srv://pradyumnakedilaya:secret123%23@cluster0.vlavb.mongodb.net/skillenhancement?retryWrites=true&w=majority'
 const db_name = 'skillenhancement'
-const col_name_q = 'questionAnswer'
-const col_name_u = 'users'
 
-//var validate_user = require('./authorize')
-const { request } = require('express')
+
+const path = require('path')
+const swaggerUi = require("swagger-ui-express")
+const fs = require('fs')
+const jsyaml = require('js-yaml');
+const file_path = path.join(__dirname,'..','swagger','userSwagger.yaml')
+const spec = fs.readFileSync(file_path, 'utf8');
+const swaggerDocument = jsyaml.load(spec);
+app.use(
+    '/swgr',
+    swaggerUi.serve, 
+    swaggerUi.setup(swaggerDocument)
+);
+
+require('dotenv').config()
 
 MongoClient.connect(url,(err,db)=>{
     if(err)throw err
-    dbo = db.db(db_name)
+    const dbo = db.db(db_name)
 
-
-    let u_counter;
-    let initial_u_counter;
 
     dbo.collection('globals').find({}).toArray((err,result)=>{
 
-        u_counter = result[0].userid
-        initial_u_counter = u_counter
-
-
-        function cleanup(){
-            dbo.collection('globals').updateOne({'userid':initial_u_counter},{$set:{'userid':u_counter}},(err,result)=>{
-            //console.log('Server Closed')
-                process.exit(1)
-
-            })
-        }
-
-        process.on('exit',cleanup)
-        process.on('SIGINT',cleanup)
-
         //get complete user details from id
-        app.get('/users/:user_id',verifyAuth,async (req,res)=>{
+        app.get('/users/:user_id',async (req,res)=>{
         
             //fetch user id
             const user_id = String(req.params.user_id)
@@ -73,70 +62,30 @@ MongoClient.connect(url,(err,db)=>{
         })
 
 
-        //post complete user details 
-        app.post('/api/signup', (req,res)=>{
-
-            const p = req.body.password
-            //var pc = req.body.passwordConformation
-            const Id = u_counter 
-            const un = req.body.username 
-            const e = req.body.email 
-            const g = req.body.gender 
-
-            dbo.collection('user').find({'username':un}).toArray((err,result)=>{
-            // console.log(result.length)
-                if (result.length==0)
-                {
-                    const u_obj={
-                        Id:Number(u_counter),
-                        username:un,
-                        token:"abc",
-                        displayName:"None",
-                        firstName:"None",
-                        lastName:"None",
-                        password:"None",
-                        grade:0,
-                        email:e,
-                        gender:g,
-                        socialLink:'None',
-                        image:"https://secure.gravatar.com/avatar/6123d8d55f9cc322bc7ef0f0?s=90&d=ide...",
-                        CreationDate:Date()
-                    }
-
-                    dbo.collection('users').insertOne(u_obj,(err,result)=>{
-                        if(err) throw err
-                        res.send("User " +un +" is added succesfully")
-                        u_counter+=1;
-                    })                    
-                }
-                else{
-                    res.send('Username already Exists')
-                }
-            })
-        })
-
         // edit user profile
         app.patch('/users/:user_id/editprofile', verifyAuth, (req,res)=>{
 
             //only owner
             const user_id = String(req.params.user_id)
-            //var p = req.body.password
-            //var pc = req.body.passwordConformation
-            //var e = req.body.image
             const g = (req.body.gender)
             const s = (req.body.SocialLink)
+            const d = (req.body.displayName)
+            const u = (req.body.username)
             dbo.collection('users').find({'Id':user_id}).toArray((err,result)=>{
                 if(result.length==1){
                     dbo.collection('users').find({'Id':user_id}).toArray((err,result)=>{
                         if (result.length==1)
                         {
                             const u_obj={
-                            //password:(p==undefined)?result[0].password:p,
-                                gender:g,
-                                SocialLink:s
+                                //password:(p==undefined)?result[0].password:p,
+                                displayName:(d==undefined)?result[0].displayName:d,
+                                username:(u==undefined)?result[0].username:u,
+                                gender:(g==undefined)?result[0].gender:g,
+                                SocialLink:(s==undefined)?result[0].SocialLink:s,
                             }
                             dbo.collection('users').updateOne({"Id":String(user_id)},{$set:u_obj},(err,result)=>{
-                                res.redirect(`/users/${user_id}`)
+                                res.send(result);
+                                //res.redirect(`/users/${user_id}`)
         
                             })
                       
@@ -271,7 +220,7 @@ MongoClient.connect(url,(err,db)=>{
         
         })
 
-        app.get('/users' ,(req,res)=>{
+        app.get('/users' , (req,res)=>{
             dbo.collection('users').find().toArray((err,result)=>{
                 if(err) throw err
                 if(result.length >= 1)
@@ -281,8 +230,98 @@ MongoClient.connect(url,(err,db)=>{
             })
         })
 
+        app.post('/api/googlelogin', (req,res)=>{
+            const {accessToken} = req.body
+            console.log(accessToken)
+            const {tokenId} = req.body
+        
+            client.verifyIdToken({idToken: tokenId, audience: "457453379813-1ei0s3u553o1elucdfbmhj6c8v6cknt7.apps.googleusercontent.com"}).then(response =>{
+                const {email_verified, name, email, sub, given_name, family_name, picture} = response.payload;
+        
+                console.log(response.payload);
+                const user_id=sub;
+                const Id=sub;
+                console.log(user_id);
+                //console.log(tokenId)
+                console.log(accessToken)
+        
+                if (email_verified){
+                    dbo.collection('users').find({'Id':user_id}).toArray((err,result) => {
+                        if(err)
+                        {
+                            console.log('pradyumna you have an error')
+                            return res.status(400).json({
+                                error: "This user doesn't exist, signup first"
+                            })
+                        }
+                        else if (result.length==0)
+                        {
+                            const u_obj={
+                                Id: user_id,
+                                username: email,
+                                displayName: name,
+                                firstName: given_name,
+                                lastName: family_name,
+                                image: picture,
+                                token: accessToken,
+                                LastLogin: Date(),
+                                gender:'Unspecified',
+                                SocialLink:'None',
+                                grade:0,
+                                CreationDate:Date()  
+                            }
+        
+                            dbo.collection('users').insertOne(u_obj,(err,result)=>{
+                                if(err) throw err
+                                if (res){res.send("User " +email +" is added succesfully")}
+                                else {res.send('Invalid User')}
+                            })
+                            dbo.collection('users').find({'Id':user_id}).toArray((err,result)=>{
+                                if(result.length == 1)
+                                {
+                                    res.json(result[0])
+                                }
+                                else
+                                {
+                                    res.send('Invalid User')
+                                }
+                            })
+                        }
+                        else if (result.length == 1)
+                        {
+                            console.log('pradyumna success!, user exists')     
+                            console.log(accessToken)
+                           
+                            const u_obj={
+                                token: accessToken,
+                                LastLogin: Date()
+                            }
+                            dbo.collection('users').updateOne({"Id":String(user_id)},{$set:u_obj},(err,result)=>{
+                                if (err) throw err
+                                else{console.log('success')}              
+                            })
+                            res.json(result[0])
+                            /*                             res.json({
+                                accessToken,
+                                Id
+                            })
+ */                        
+                            
+                        }
+                    })
+                }
+            })
+        })
+        
+
     })
 })
 
 module.exports = app
 
+/* 
+res.json({
+    token,
+    user_id
+})
+ */

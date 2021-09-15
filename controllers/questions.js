@@ -6,12 +6,23 @@ app.use(express.urlencoded({extended:true}));
 const cors = require('cors');
 app.use(cors());
 
+const path = require('path')
+const swaggerUi = require("swagger-ui-express")
+const fs = require('fs')
+const jsyaml = require('js-yaml');
+const file_path = path.join(__dirname,'..','swagger','questionSwagger.yaml')
+const spec = fs.readFileSync(file_path, 'utf8');
+const swaggerDocument = jsyaml.load(spec);
+app.use(
+    '/swgr',
+    swaggerUi.serve, 
+    swaggerUi.setup(swaggerDocument)
+);
+
+require('dotenv').config()
+
 const request = require('request');
 
-// var server = app.listen(8089,()=>{
-//     console.log('Question Controller Started')
-
-// })
 
 const MongoClient = require('mongodb').MongoClient;
 
@@ -22,58 +33,27 @@ const col_name_q = 'questionAnswer';
 const col_name_u = 'users';
 
 
-//var validate_user = require('/authorize')
 const validate_user = require('./authorize');
 const { connection } = require('mongoose');
 
 //connecting to the skillenhancement MongoDB Atlas Database
-MongoClient.connect(url,async (err,db)=>{
+MongoClient.connect(url,(err,db)=>{
     if(err)throw err;
-    dbo = db.db(db_name);
-
-    //console.log('sep Database Connected')
-
-    let adr = await dbo.collection('globals').find({}).toArray()
-    adr = adr[0].adr
-
-    let q_counter;
-    let initial_q_counter;
+    const dbo = db.db(db_name);
 
     //fetching the q_num(post_counter) to generate unique ids 
     dbo.collection('globals').find({}).toArray((err,result)=>{
-        //console.log(result)
-        q_counter = result[0].q_num;
-        initial_q_counter = q_counter;
-
-
-        //persists the q_counter in the globals collection server close
-        async function cleanup(){
-            dbo.collection('globals').updateOne({'q_num':initial_q_counter},{$set:{'q_num':q_counter}},(err,result)=>{
-            //console.log('Server Closed')
-            //process.exit(1)
-
-            });
-        }
-
-        //process.on('exit',cleanup)
-        //process.on('SIGINT',cleanup)
-   
-    
         //api to get a specific question by id
         app.get('/questions/:question_id',(req,res)=>{
             const question_id = parseInt(req.params.question_id);
-            //console.log(question_id)
-            //console.log(typeof question_id)
 
             //checks question existence
             dbo.collection(col_name_q).find({'Id':question_id,'PostTypeId':1}).toArray((err,result)=>{
-            //console.log(result)
                 if(result.length == 1)
                 {
                     const question = result[0];
                     dbo.collection(col_name_q).updateOne({'Id':question_id,'PostTypeId':1},{$inc:{'ViewCount':1}},(err,result)=>{
                         if(err) throw err;
-                        //console.log(result)
 
                         question.ViewCount+=1;
                         res.send(question);
@@ -93,9 +73,7 @@ MongoClient.connect(url,async (err,db)=>{
         //api to get all questions in the collection 'questionAnswer'
         app.get('/questions',(req,res)=>{
             
-            //console.log('/questions')
             dbo.collection(col_name_q).find({'PostTypeId':1}).toArray((err,result)=>{
-                //res.render('user_profile.jade') //for answers & comments also
                 res.send(result);
             });
         
@@ -107,9 +85,6 @@ MongoClient.connect(url,async (err,db)=>{
             const data = req.body;
             const token = req.headers['x-access-token'];
 
-            // console.log(token)
-            // console.log(typeof token)
-
             //login check
             if(token == null || token == undefined){
                 res.send('Not Logged In');
@@ -119,9 +94,11 @@ MongoClient.connect(url,async (err,db)=>{
                 dbo.collection(col_name_u).find({'token':token}).toArray(async (err,result)=>{
                     if(err) throw err;
 
-                    //console.log(result)
                     //token existence check and validation
                     if(result.length==1 && (uv =await validate_user(token,result[0]))){
+
+                        const query_res = await dbo.collection('globals').find().toArray()
+                        let q_counter = query_res[0].q_num
 
                         const q_obj={
                             Id:q_counter++,
@@ -137,11 +114,10 @@ MongoClient.connect(url,async (err,db)=>{
                             ClosedDate:null
                         };
 
-                        await cleanup();
+                        await dbo.collection('globals').updateOne({},{$set:{'q_num':q_counter}})
                     
                         dbo.collection(col_name_q).insertOne(q_obj,(err,result)=>{
                             if(err) throw err;
-                            //console.log(result)
                             //redirecting to the new question added
                             res.redirect(`/questions/${q_obj.Id}`);
                         });
@@ -165,7 +141,6 @@ MongoClient.connect(url,async (err,db)=>{
             const token = req.headers['x-access-token'];
 
             //login check
-            //console.log(token)
             if(token == null || token == undefined){
                 res.send('Not Logged In');
             }
@@ -237,26 +212,20 @@ MongoClient.connect(url,async (err,db)=>{
                                 //update SCore
                                 dbo.collection(col_name_q).updateOne(upd_sel,upd_params,(err,result)=>{
                                     if(err) throw err;
-                                    // console.log(result)
-                                
-                                    // console.log('action user id'+ActionUserId)
-                                    // console.log('owner user id'+OwnerUserId)
 
                                     //notify to the user whose question is voted
                                     new Promise((resolve,reject)=>{
                                         if(ActionUserId != OwnerUserId){
-                                        //console.log('inside noti call')
                                             request.post({
                                                 headers:{'content-type':'application/json',
                                                     'x-access-token':token},
-                                                url:`http://${adr}:8083/User/${OwnerUserId}/push`,
+                                                url:`http://${process.env.HOST}:8083/User/${OwnerUserId}/push`,
                                                 body:JSON.stringify({
                                                     Body: User.username + " has Reacted On your Post",
                                                     PostId:question_id
                                                 })
                                             },(err,response)=>{
                                                 if(err) throw err;
-                                                //console.log(response.body)
                                             
                                             });
                                         }
@@ -274,113 +243,6 @@ MongoClient.connect(url,async (err,db)=>{
 
                                 });
 
-
-                            }
-                            else{
-                                res.send('Invalid Post ID');
-                            }
-                        });
-
-                    }
-                    else{
-                        res.send('Invalid User');
-                    }
-                });
-            }
-
-        });
-
-        //api to undo the vote on a question
-        /**
-     * this api was separately made apart from vote api above as it would come in handy if rather than keeping a net Score
-     * value we have upvote and downvote counts separate
-     */
-        app.get('/questions/:question_id/:vote/undo',(req,res)=>{
-
-            const question_id = parseInt(req.params.question_id);
-            const vote = req.params.vote;
-            const token = req.headers['x-access-token'];
-
-            //login check
-            if(token == null || token == undefined){
-                res.send('Not Logged In');
-            }
-            else{
-                dbo.collection(col_name_u).find({'token':token}).toArray(async (err,result)=>{
-                    if(err) throw err;
-
-                    //token existence check & validation
-                    if(result.length==1 && (uv =await validate_user(token,result[0]))){
-
-                        const User = result[0];
-                        const ActionUserId = result[0].Id;
-
-                        //question existence check
-                        dbo.collection(col_name_q).find({'Id':question_id}).toArray((err,result)=>{
-                            if(result.length==1){
-                                const OwnerUserId = result[0].OwnerUserId;
-
-                                const PostTypeId = result[0].PostTypeId;
-
-
-                                const upd_sel={
-                                    'Id':question_id
-                                };
-                                let upd_params;
-
-                                if(vote == 'upvote'){
-                                    upd_params = {
-                                        $inc:{
-                                            'Score': -1
-                                        }
-                                    };
-                                }
-                                else if(vote == 'downvote'){
-                                    upd_params = {
-                                        $inc:{
-                                            'Score': 1
-                                        }
-                                    };
-                                }
-                            
-                                //update the score
-                                dbo.collection(col_name_q).updateOne(upd_sel,upd_params,(err,result)=>{
-                                    if(err) throw err;
-                                    // console.log(result)
-                                
-                                    // console.log('action user id'+ActionUserId)
-                                    // console.log('owner user id'+OwnerUserId)
-
-                                    //notification sent to the owner of the post being reacted on 
-                                    new Promise((resolve,reject)=>{
-                                        if(ActionUserId != OwnerUserId){
-                                        //console.log('inside noti call')
-                                            request.post({
-                                                headers:{'content-type':'application/json',
-                                                    'x-access-token':token},
-                                                url:`http://${adr}:8083/User/${OwnerUserId}/push`,
-                                                body:JSON.stringify({
-                                                    Body: User.username + " has Reacted On your Post",
-                                                    PostId:question_id
-                                                })
-                                            },(err,response)=>{
-                                                if(err) throw err;
-                                                //console.log(response.body)
-                                            
-                                            });
-                                        }
-                                        resolve();
-                                    
-                                    }).then(()=>{
-                                        if(PostTypeId == 1){
-                                            res.redirect(`/questions/${question_id}`);
-                                        }
-                                        else if(PostTypeId == 2)
-                                            res.send('Success');
-
-                                    });
-                                });
-                            
 
                             }
                             else{
@@ -425,7 +287,6 @@ MongoClient.connect(url,async (err,db)=>{
                                 //delete op
                                 dbo.collection(col_name_q).deleteOne({'Id':question_id},(err,result)=>{
                                     if(err) throw err;
-                                    // console.log(result)
 
                                     //sending notification to everyone who answered the question
                                     dbo.collection(col_name_q).find({'PostTypeId':2,'ParentId':question_id}).toArray((err,result)=>{
@@ -438,19 +299,17 @@ MongoClient.connect(url,async (err,db)=>{
                                             new Promise((resolve,reject)=>{
                                                 ans_set.forEach((answer)=>{
                                                     if(answer!=User.Id){
-                                                        // console.log('inside noti call')
                                                         new Promise((resolve,reject)=>{
                                                             request.post({
                                                                 headers:{'content-type':'application/json',
                                                                     'x-access-token':token},
-                                                                url:`http://${adr}:8083/User/${answer}/push`,
+                                                                url:`http://${process.env.HOST}:8083/User/${answer}/push`,
                                                                 body:JSON.stringify({
                                                                     Body: User.username + " has deleted the post you answerd on",
                                                                     PostId:question_id
                                                                 })
                                                             },(err,response)=>{
                                                                 if(err) throw err;
-                                                                //console.log(response.body)
                                                         
                                                             });
                                                             resolve();
@@ -546,9 +405,7 @@ MongoClient.connect(url,async (err,db)=>{
                                     }
 
                                     dbo.collection(col_name_q).updateOne(upd_sel,upd_params,(err,result)=>{
-                                        if(err) throw err;
-                                        // console.log(result)
-    
+                                        if(err) throw err;    
 
                                         //notifications sent to all users who have answered this question
                                         dbo.collection(col_name_q).find({'PostTypeId':2,'ParentId':question_id}).toArray((err,result)=>{
@@ -561,19 +418,17 @@ MongoClient.connect(url,async (err,db)=>{
                                                 new Promise((resolve,reject)=>{
                                                     ans_set.forEach((answer)=>{
                                                         if(answer!=User.Id){
-                                                            // console.log('inside noti call')
                                                             new Promise((resolve,reject)=>{
                                                                 request.post({
                                                                     headers:{'content-type':'application/json',
                                                                         'x-access-token':token},
-                                                                    url:`http://${adr}:8083/User/${answer}/push`,
+                                                                    url:`http://${process.env.HOST}:8083/User/${answer}/push`,
                                                                     body:JSON.stringify({
                                                                         Body: User.username + " has Editted the post you answerd on",
                                                                         PostId:question_id
                                                                     })
                                                                 },(err,response)=>{
                                                                     if(err) throw err;
-                                                                    //console.log(response.body)
                     
                                                                 });
                                                                 resolve();
@@ -619,14 +474,11 @@ MongoClient.connect(url,async (err,db)=>{
         //api to fetch all answers for a question
         app.post('/questions/:question_id/answers',(req,res)=>{
 
-            // console.log('hi')
             const question_id = parseInt(req.params.question_id);
-            // console.log(question_id)
             dbo.collection(col_name_q).find({'Id':question_id,'PostTypeId':1}).toArray((err,result)=>{
                 if(result.length == 1){
                     dbo.collection(col_name_q).find({'PostTypeId':2,'ParentId':question_id}).toArray((err,result)=>{
                         if(err) throw err;
-                        // console.log(result)
                         res.send((result));
                     });
                 }
@@ -641,8 +493,6 @@ MongoClient.connect(url,async (err,db)=>{
             const question_id = parseInt(req.params.question_id);
             const token = req.headers['x-access-token'];
             const data = req.body;
-
-            // console.log('hi')
 
             if(token == null || token == undefined){
                 res.send('Not Logged In');
@@ -666,6 +516,8 @@ MongoClient.connect(url,async (err,db)=>{
 
                                     const OwnerUserId = result[0].OwnerUserId;
 
+                                    const query_res = await dbo.collection('globals').find().toArray()
+                                    let q_counter = query_res[0].q_num
                                     const a_obj={
                                         'Id':q_counter++,
                                         'PostTypeId':2,
@@ -675,39 +527,32 @@ MongoClient.connect(url,async (err,db)=>{
                                         'ViewCount':0,
                                         'Body':data.Body,
                                         'OwnerUserId':User.Id,
-                                        'Tags':data.Tags,
                                     };
 
-                                    await cleanup();
+                                    await dbo.collection('globals').updateOne({},{$set:{'q_num':q_counter}})
 
                                     dbo.collection(col_name_q).insertOne(a_obj,(err,result)=>{
                                         if(err) throw err;
-                                        // console.log(result)
-
-                                        // console.log('action user id'+ActionUserId)
-                                        // console.log('owner user id'+OwnerUserId)
 
                                         //notification sent to the owner of the question
                                         if(ActionUserId != OwnerUserId){
-                                            // console.log('inside noti call')
                                             request.post({
                                                 headers:{'content-type':'application/json',
                                                     'x-access-token':token},
-                                                url:`http://${adr}:8083/User/${OwnerUserId}/push`,
+                                                url:`http://${process.env.HOST}:8083/User/${OwnerUserId}/push`,
                                                 body:JSON.stringify({
                                                     Body: User.username + " has answerd to your question",
                                                     PostId:question_id
                                                 })
                                             },(err,response)=>{
                                                 if(err) throw err;
-                                                // console.log(response.body)
-                                                res.redirect(`http://${adr}:8088/answers/${a_obj.Id}`);
+                                                res.redirect(`http://${process.env.HOST}:8088/answers/${a_obj.Id}`);
                                         
         
                                             });
                                         }
                                         else 
-                                            res.redirect(`http://${adr}:8088/answers/${a_obj.Id}`);
+                                            res.redirect(`http://${process.env.HOST}:8088/answers/${a_obj.Id}`);
 
                                     });
                                 }
@@ -746,21 +591,16 @@ MongoClient.connect(url,async (err,db)=>{
                     if(result.length == 1 && (uv =await validate_user(token,result[0]))){
 
                         const User = result[0];
-                        // console.log('User ---- '+User.Id)
 
                         dbo.collection(col_name_q).find({'Id':question_id,'PostTypeId':1}).toArray((err,result)=>{
-                        // console.log(result[0])
                             if(result.length == 1 && result[0].OwnerUserId==User.Id){
                                 if(result[0].ClosedDate!=null){
                                     res.send('Already in Closed State');
                                 }
                                 else{
-                                    const OwnerUserId = result[0].OwnerUserId;
 
                                     dbo.collection(col_name_q).updateOne({'Id':question_id},{$set:{'ClosedDate':Date.now()}},(err,result)=>{
                                         if(err) throw err;
-                                        // console.log(result)
-
 
                                         dbo.collection(col_name_q).find({'PostTypeId':2,'ParentId':question_id}).toArray((err,result)=>{
                                    
@@ -771,23 +611,19 @@ MongoClient.connect(url,async (err,db)=>{
                                             }).then(()=>{
                                                 new Promise((resolve,reject)=>{
                                                     ans_set.forEach((answer)=>{
-                                                        // console.log(answer)
-                                                        // console.log(typeof answer)
                                                         answer=JSON.parse(answer);
                                                         if(answer!=User.Id){
-                                                            // console.log('inside noti call')
                                                             new Promise((resolve,reject)=>{
                                                                 request.post({
                                                                     headers:{'content-type':'application/json',
                                                                         'x-access-token':token},
-                                                                    url:`http://${adr}:8083/User/${answer}/push`,
+                                                                    url:`http://${process.env.HOST}:8083/User/${answer}/push`,
                                                                     body:JSON.stringify({
                                                                         Body: User.username + " has Closed the post you answerd on",
                                                                         PostId:question_id
                                                                     })
                                                                 },(err,response)=>{
                                                                     if(err) throw err;
-                                                                    //console.log(response.body)
                         
                                                                 });
                                                                 resolve();
@@ -841,21 +677,16 @@ MongoClient.connect(url,async (err,db)=>{
                     if(result.length == 1 && (uv =await validate_user(token,result[0]))){
 
                         const User = result[0];
-                        // console.log('User ---- '+User.Id)
 
                         dbo.collection(col_name_q).find({'Id':question_id,'PostTypeId':1}).toArray((err,result)=>{
-                        // console.log(result[0])
                             if(result.length == 1 && result[0].OwnerUserId==User.Id){
                                 if(result[0].ClosedDate==null){
                                     res.send('Question is Already Open');
                                 }
                                 else{
-                                    const OwnerUserId = result[0].OwnerUserId;
 
                                     dbo.collection(col_name_q).updateOne({'Id':question_id},{$set:{'ClosedDate':null}},(err,result)=>{
                                         if(err) throw err;
-                                        // console.log(result)
-
 
                                         dbo.collection(col_name_q).find({'PostTypeId':2,'ParentId':question_id}).toArray((err,result)=>{
 
@@ -866,20 +697,18 @@ MongoClient.connect(url,async (err,db)=>{
                                             }).then(()=>{
                                                 new Promise((resolve,reject)=>{
                                                     ans_set.forEach((answer)=>{
-                                                        //console.log('inside noti call')
                                                         if(answer!=User.Id){
                                                             new Promise((resolve,reject)=>{
                                                                 request.post({
                                                                     headers:{'content-type':'application/json',
                                                                         'x-access-token':token},
-                                                                    url:`http://${adr}:8083/User/${answer}/push`,
+                                                                    url:`http://${process.env.HOST}:8083/User/${answer}/push`,
                                                                     body:JSON.stringify({
                                                                         Body: User.username + " has ReOpened the post you answerd on",
                                                                         PostId:question_id
                                                                     })
                                                                 },(err,response)=>{
                                                                     if(err) throw err;
-                                                                    //console.log(response.body)
                         
                                                                 });
                                                                 resolve();

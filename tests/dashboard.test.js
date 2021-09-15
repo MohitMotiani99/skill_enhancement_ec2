@@ -28,8 +28,9 @@ afterAll(async ()=>{
     await connection.close()
 })
 
+
 test('GET /mainpage2 ',async () => {
-    await supertest(app).post('/mainpage2')
+    await supertest(app).get('/mainpage2')
         .expect(200)
         .then(async (res)=>{
             const questions = await dbo.collection(col_name_q).find({'PostTypeId':1}).toArray()
@@ -54,19 +55,17 @@ test('POST /searchstring ',async () => {
         })
 })
 
-test('POST /searchposts ',async () => {
-    const search_obj={
-        search_string:"c++ mongo"
-    }
-    await supertest(app).post('/searchposts')
-        .send(search_obj)
+test('GET /searchpost/:search_string ',async () => {
+    
+    const search_string = "c++ mongo"
+    await supertest(app).get(`/searchpost/${search_string}`)
         .expect(200)
         .then(async (res)=>{
             const recieved = res.body
 
-            const posts = await dbo.collection(col_name_q).find({$text:{$search:search_obj.search_string}}).toArray()
-            const questions = posts.filter(p=>{return p.PostTypeId==1})
-            const answers = posts.filter(p=>{return p.PostTypeId==2})
+            const posts = await dbo.collection(col_name_q).find({$text:{$search:search_string}}).toArray()
+            const questions = posts.filter(p=>{return p.PostTypeId==1}).sort((q1,q2)=>q2.ViewCount-q1.ViewCount)
+            const answers = posts.filter(p=>{return p.PostTypeId==2}).sort((a1,a2)=>a2.ViewCount-a1.ViewCount)
 
             expect(JSON.stringify(res.body.questions)).toEqual(JSON.stringify(questions))
             expect(JSON.stringify(res.body.answers)).toEqual(JSON.stringify(answers))
@@ -86,7 +85,7 @@ test('POST /suggested ',async () => {
             const recieved = res.body
 
             const posts = await dbo.collection(col_name_q).find({$text:{$search:q_details.Title+" "+q_details.Body}}).toArray()
-            const questions = posts.filter(p=>{return p.PostTypeId==1})
+            const questions = posts.filter(p=>{return p.PostTypeId==1}).sort((q1,q2)=>q2.ViewCount-q1.ViewCount)
 
             expect(JSON.stringify(res.body)).toEqual(JSON.stringify(questions))
         })
@@ -148,19 +147,30 @@ test('GET /trending ',async () => {
         })
 })
 
-test('POST /searchcusts ',async () => {
-    const search_obj={
-        search_name:'mohit'
-    }
-    await supertest(app).post('/searchcusts')
-        .send(search_obj)
+test('GET /searchcusts/:name ',async () => {
+    const name='pradyumn'
+    
+    await supertest(app).get(`/searchcusts/${name}`)
         .expect(200)
         .then(async (res)=>{
             const recieved = res.body
 
             const users = await dbo.collection(col_name_u).find().toArray()
-            const result = users.filter(u=>{return u.username.indexOf(search_obj.search_name)>=0})
+            const expected = users.filter(u=>{return u.displayName.toLowerCase().indexOf(name)>=0})
+            expect(JSON.stringify(recieved)).toEqual(JSON.stringify(expected))
+        })
+})
 
-            expect(JSON.stringify(res.body)).toEqual(JSON.stringify(result))
+test('GET /searchTags/:tag', async () => {
+    const tag = "c++"
+
+    await supertest(app).get(`/searchTags/${tag}`)
+        .expect(200)
+        .then(async (res)=>{
+            const recieved = res.body
+
+            const questions = await dbo.collection(col_name_q).find({'PostTypeId':1}).sort({'ViewCount':-1}).toArray()
+            const expected = questions.filter(q=>{return q.Tags.indexOf(tag)>=0})
+            expect(JSON.stringify(recieved.questions)).toEqual(JSON.stringify(expected))
         })
 })
